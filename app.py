@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -7,48 +6,60 @@ from ai_agents import generate_followup_email, generate_weekly_summary
 
 st.set_page_config(page_title="Hustad Sales & Service Dashboard", layout="wide")
 
-# Load data from API or fallback CSV
+# Load data from API
 df = fetch_service_data()
 
 # Sidebar filters
 st.sidebar.header("🔎 Filter Data")
-rep = st.sidebar.multiselect("Sales Rep", options=df['Opportunity Manager'].dropna().unique())
-stage = st.sidebar.multiselect("Stage", options=df['Stage'].dropna().unique())
-stype = st.sidebar.multiselect("Service Type", options=df['Service Type - Hustad'].dropna().unique())
-date_range = st.sidebar.date_input("Created Date Range", [])
+rep = st.sidebar.multiselect("Opportunity Type", options=df['opportunityType'].dropna().unique())
+status = st.sidebar.multiselect("Status", options=df['displayStatus'].dropna().unique())
+domain = st.sidebar.multiselect("Domain", options=df['domain'].dropna().unique())
+date_range = st.sidebar.date_input("Opened Date Range", [])
 
 # Apply filters
 filtered_df = df.copy()
+
 if rep:
-    filtered_df = filtered_df[filtered_df['Opportunity Manager'].isin(rep)]
-if stage:
-    filtered_df = filtered_df[filtered_df['Stage'].isin(stage)]
-if stype:
-    filtered_df = filtered_df[filtered_df['Service Type - Hustad'].isin(stype)]
+    filtered_df = filtered_df[filtered_df['opportunityType'].isin(rep)]
+
+if status:
+    filtered_df = filtered_df[filtered_df['displayStatus'].isin(status)]
+
+if domain:
+    filtered_df = filtered_df[filtered_df['domain'].isin(domain)]
+
 if len(date_range) == 2:
+    start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
     filtered_df = filtered_df[
-        (filtered_df['Created Date'] >= pd.to_datetime(date_range[0])) &
-        (filtered_df['Created Date'] <= pd.to_datetime(date_range[1]))
+        (filtered_df['openedAt'] >= start) & (filtered_df['openedAt'] <= end)
     ]
 
 # KPIs
 st.title("🚀 Hustad Sales & Service Dashboard")
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Total Requests", len(filtered_df))
-col2.metric("Scheduled", filtered_df[filtered_df['Stage'] == 'Scheduled'].shape[0])
-col3.metric("In Progress", filtered_df[filtered_df['Stage'] == 'In Progress'].shape[0])
-col4.metric("Total Sale Value", f"${filtered_df['Sale Price'].sum():,.2f}")
+col2.metric("Backlog", filtered_df[filtered_df['displayStatus'] == 'Backlog'].shape[0])
+col3.metric("In Progress", filtered_df[filtered_df['displayStatus'] == 'In Progress'].shape[0])
+col4.metric("Total Quoted Amount", f"${filtered_df['price'].sum():,.2f}")
 
 # Charts
-st.subheader("📊 Requests by Type")
-st.plotly_chart(px.bar(filtered_df['Type'].value_counts().reset_index(), x='index', y='Type', labels={'index': 'Type', 'Type': 'Count'}))
+st.subheader("📊 Requests by Opportunity Type")
+st.plotly_chart(px.bar(
+    filtered_df['opportunityType'].value_counts().reset_index(),
+    x='index', y='opportunityType',
+    labels={'index': 'Type', 'opportunityType': 'Count'}
+))
 
-st.subheader("🧑‍💼 By Sales Rep")
-st.plotly_chart(px.bar(filtered_df['Opportunity Manager'].value_counts().reset_index(), x='index', y='Opportunity Manager', labels={'index': 'Rep', 'Opportunity Manager': 'Count'}))
+st.subheader("📌 Requests by Status")
+st.plotly_chart(px.pie(
+    filtered_df['displayStatus'].value_counts().reset_index(),
+    names='index', values='displayStatus',
+    title='Service Status'
+))
 
 # Download filtered data
-st.subheader("⬇️ Download CSV")
-st.download_button("Download Filtered Data", data=filtered_df.to_csv(index=False), file_name="filtered_requests.csv")
+st.subheader("⬇️ Download Filtered CSV")
+st.download_button("Download CSV", data=filtered_df.to_csv(index=False), file_name="filtered_requests.csv")
 
 # AI Tools
 st.header("🤖 AI-Powered Tools")
@@ -57,17 +68,16 @@ tab1, tab2 = st.tabs(["📩 Follow-Up Generator", "📋 Weekly Sales Summary"])
 
 with tab1:
     st.subheader("Generate Follow-Up Email")
-    sample = filtered_df[filtered_df['Type'] == 'Scope'].sample(1) if not filtered_df.empty else pd.DataFrame()
+    sample = filtered_df[filtered_df['description'].notna()].sample(1) if not filtered_df.empty else pd.DataFrame()
     if not sample.empty:
-        desc = sample.iloc[0]['Description']
-        company = sample.iloc[0]['Company']
-        prop = sample.iloc[0]['Property']
-        rep = sample.iloc[0]['Opportunity Manager']
+        desc = sample.iloc[0]['description']
+        opp_type = sample.iloc[0]['opportunityType']
+        domain_val = sample.iloc[0]['domain']
         if st.button("Generate Email"):
-            email = generate_followup_email(company, prop, desc, rep)
+            email = generate_followup_email(opp_type, domain_val, desc, "Team")
             st.success(email)
     else:
-        st.info("No 'Scope' records found.")
+        st.info("No records with descriptions found.")
 
 with tab2:
     st.subheader("Weekly AI Summary")
