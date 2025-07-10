@@ -1,6 +1,6 @@
-# app.py
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from datetime import datetime
 from centerpoint_api import fetch_service_data
 
@@ -9,40 +9,40 @@ st.set_page_config(page_title="📋 Service List from Centerpoint API", layout="
 # Load data from API
 df = fetch_service_data()
 
-# Convert 'Opened At' column to datetime for filtering
-if "Opened At" in df.columns:
-    df["Opened At"] = pd.to_datetime(df["Opened At"], errors="coerce")
+# Rename columns for display if they exist
+column_renames = {
+    "name": "Ticket ID",
+    "description": "Description",
+    "Company": "Company",
+    "Property": "Property",
+    "Manager": "Manager",
+    "displayStatus": "Status",
+    "type": "Type",
+    "openedAt": "Opened At",
+    "price": "Price"
+}
+df.rename(columns=column_renames, inplace=True)
 
-# Sidebar filters
-st.sidebar.header("🔎 Filter Data")
-date_range = st.sidebar.date_input("Opened Date Range", [])
+# Ensure 'Opened At' is in datetime format if it exists
+if 'Opened At' in df.columns:
+    df['Opened At'] = pd.to_datetime(df['Opened At'], errors='coerce')
 
+# Sidebar filter for date range
+date_range = st.sidebar.date_input("📅 Opened Date Range", [])
+
+# Filter by date if applicable
 filtered_df = df.copy()
-if date_range and len(date_range) == 2:
-    start = pd.to_datetime(date_range[0])
-    end = pd.to_datetime(date_range[1])
-    if "Opened At" in filtered_df.columns:
-        filtered_df = filtered_df[
-            (filtered_df["Opened At"] >= start) & (filtered_df["Opened At"] <= end)
-        ]
+if 'Opened At' in df.columns and len(date_range) == 2:
+    start, end = pd.to_datetime(date_range)
+    filtered_df = filtered_df[(filtered_df['Opened At'] >= start) & (filtered_df['Opened At'] <= end)]
 
-# Display API status
-st.markdown("""
-    ## 📋 Service List from Centerpoint API
-    ✅ Fetched Data Shape: {0}
-""".format(filtered_df.shape))
+# Display title and summary
+st.title("📋 Service List from Centerpoint API")
+st.success(f"✅ Fetched Data Shape: {filtered_df.shape}")
 
-# Show columns
-st.markdown("### 📋 Columns:")
+# Show column names
+st.subheader("📋 Columns:")
 st.code(list(filtered_df.columns))
 
-# Show cleaned table
-expected_columns = [
-    "Ticket ID", "Description", "Company", "Property",
-    "Manager", "Status", "Type", "Opened At", "Price"
-]
-if all(col in filtered_df.columns for col in expected_columns):
-    st.dataframe(filtered_df[expected_columns].sort_values(by="Opened At", ascending=False))
-else:
-    st.warning("⚠️ Some expected columns are missing. Showing full raw table.")
-    st.dataframe(filtered_df.sort_values(by=filtered_df.columns[0], ascending=False))
+# Display table
+st.dataframe(filtered_df.sort_values(by='Opened At', ascending=False) if 'Opened At' in filtered_df.columns else filtered_df, use_container_width=True)
