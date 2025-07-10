@@ -16,12 +16,12 @@ def fetch_service_data():
         res = requests.get(url, headers=HEADERS, timeout=10)
         res.raise_for_status()
     except Exception as e:
-        st.error(f"❌ API Error: {e}")
+        st.error(f"❌ API error: {e}")
         return pd.DataFrame()
-    
+
     data = res.json()
 
-    # Lookup table for resolving IDs
+    # Build lookup from 'included' data
     included_lookup = {}
     for item in data.get("included", []):
         _type = item.get("type")
@@ -29,13 +29,16 @@ def fetch_service_data():
         name = item.get("attributes", {}).get("name", "Unknown")
         included_lookup[(_type, _id)] = name
 
-    # Helper function to resolve relationship name
+    # Safe resolver for relationship fields
     def resolve(rel, rel_type):
-        if not rel:
-            return "Unknown"
-        _id = rel.get("data", {}).get("id")
-        return included_lookup.get((rel_type, _id), "Unknown") if _id else "Unknown"
+        if isinstance(rel, dict) and "data" in rel:
+            rel_data = rel["data"]
+            if isinstance(rel_data, dict):
+                _id = rel_data.get("id")
+                return included_lookup.get((rel_type, _id), "Unknown") if _id else "Unknown"
+        return "Unknown"
 
+    # Transform main service data
     records = []
     for item in data.get("data", []):
         attr = item.get("attributes", {})
@@ -56,5 +59,5 @@ def fetch_service_data():
     df = pd.DataFrame(records)
     df["Opened At"] = pd.to_datetime(df["Opened At"], errors="coerce")
     df["Price"] = pd.to_numeric(df["Price"], errors="coerce").fillna(0)
-    
+
     return df
