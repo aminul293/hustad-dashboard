@@ -30,6 +30,7 @@ if domain:
 
 if len(date_range) == 2:
     start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+    filtered_df['openedAt'] = pd.to_datetime(filtered_df['openedAt'], errors='coerce')
     filtered_df = filtered_df[
         (filtered_df['openedAt'] >= start) & (filtered_df['openedAt'] <= end)
     ]
