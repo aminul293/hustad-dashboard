@@ -33,8 +33,9 @@ date_range = st.sidebar.date_input("📅 Opened Date Range", [])
 # Filter by date if applicable
 filtered_df = df.copy()
 if 'Opened At' in df.columns and len(date_range) == 2:
-    start, end = pd.to_datetime(date_range)
-    filtered_df = filtered_df[(filtered_df['Opened At'] >= start) & (filtered_df['Opened At'] <= end)]
+    start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+    mask = filtered_df['Opened At'].notna()
+    filtered_df = filtered_df[mask & (filtered_df['Opened At'] >= start) & (filtered_df['Opened At'] <= end)]
 
 # Display title and summary
 st.title("📋 Service List from Centerpoint API")
