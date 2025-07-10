@@ -16,7 +16,9 @@ def fetch_service_data(api_token):
     """
     Connects to the Centerpoint API, fetches service data, and returns a cleaned DataFrame.
     """
-    api_url = "https://api.centerpoint.io/v1/services" # Example API URL
+    # --- 🛠️ FIX #1: Using the correct API URL ---
+    api_url = "https://api.centerpointconnect.io/centerpoint/services"
+    
     headers = {
         "Authorization": f"Bearer {api_token}",
         "Content-Type": "application/json",
@@ -24,14 +26,13 @@ def fetch_service_data(api_token):
 
     try:
         response = requests.get(api_url, headers=headers)
-        response.raise_for_status()  # Raises an exception for 4XX/5XX errors
+        response.raise_for_status()
         data = response.json()
 
-        # Extract relevant fields and flatten JSON if necessary
-        # This part is based on the prompt's description of fields.
-        # It may need adjustment for the actual API response structure.
+        # This structure assumes the API returns a list of services.
+        # Adjust the .get('services', data) part if the JSON structure is different.
         records = []
-        for item in data.get('services', []): # Assuming data is {'services': [...]}
+        for item in data.get('services', data): # Fallback to 'data' if no 'services' key
             records.append({
                 'Ticket ID': item.get('ticketId'),
                 'Description': item.get('description'),
@@ -47,10 +48,7 @@ def fetch_service_data(api_token):
         df = pd.DataFrame(records)
 
         # --- Data Cleaning and Type Conversion ---
-        # Convert 'Opened At' to datetime, coercing errors to NaT (Not a Time)
         df['Opened At'] = pd.to_datetime(df['Opened At'], errors='coerce')
-
-        # Clean up 'Price' column, converting to numeric
         if 'Price' in df.columns:
             df['Price'] = pd.to_numeric(df['Price'], errors='coerce').fillna(0)
 
@@ -58,75 +56,71 @@ def fetch_service_data(api_token):
 
     except requests.exceptions.RequestException as e:
         st.error(f"API Connection Error: {e}")
-        return pd.DataFrame() # Return empty DataFrame on error
+        return pd.DataFrame()
+    except ValueError as e: # Catches JSON decoding errors
+        st.error(f"Data Processing Error: Failed to decode JSON. The API may have returned an unexpected response. Details: {e}")
+        return pd.DataFrame()
+
 
 # --- Main Application ---
 st.title("📡 Centerpoint Service Dashboard")
 st.markdown("Live service data from the Centerpoint API.")
 
-# Use a placeholder for the API token for security
-# In a real app, use st.secrets for this
-API_TOKEN = "eyJvcmciOiI2NmJlMzEwMzFiMGJjMTAwMDEwM2RiN2MiLCJpZCI6IjE0NWQwN2E2MmRiMjQyNTM5NmQyOWU5NTBjY2VhMzk2IiwiaCI6Im11cm11cjEyOCJ9" 
+# --- 🛠️ FIX #2: Securely access the API token from st.secrets ---
+# This assumes you have set a secret named 'api_token' in your Streamlit settings.
+try:
+    API_TOKEN = st.secrets["api_token"]
+except (KeyError, FileNotFoundError):
+    st.error("API token not found. Please set the 'api_token' in your Streamlit secrets.")
+    st.stop()
+
 
 # Fetch the data
-with st.spinner("Fetching latest service data..."):
+with st.spinner("Fetching latest service data from Centerpoint API..."):
     df = fetch_service_data(API_TOKEN)
 
 if not df.empty:
-    # --- Sidebar for Filtering ---
     st.sidebar.header("Filter Options")
 
-    # Set default date range: from the earliest date in data to the latest
-    min_date = df['Opened At'].min().date()
-    max_date = df['Opened At'].max().date()
+    # Guard against NaT values before getting min/max
+    valid_dates = df['Opened At'].dropna()
+    if not valid_dates.empty:
+        min_date = valid_dates.min().date()
+        max_date = valid_dates.max().date()
 
-    date_range = st.sidebar.date_input(
-        "Filter by 'Opened At' date:",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
-    )
-
-    # Ensure the date range is valid (start <= end)
-    if len(date_range) == 2:
-        start_date, end_date = date_range
-        
-        # --- 🛠️ FIX APPLIED HERE ---
-        # Convert date_input's datetime.date objects to pandas datetime (Timestamp)
-        # This ensures the comparison is between the same data types.
-        start_ts = pd.to_datetime(start_date)
-        end_ts = pd.to_datetime(end_date).replace(hour=23, minute=59, second=59) # Include the whole end day
-
-        # Filter the DataFrame using the corrected Timestamps
-        filtered_df = df[
-            df['Opened At'].notna() &
-            (df['Opened At'] >= start_ts) &
-            (df['Opened At'] <= end_ts)
-        ]
-
-        # --- Display Filtered Data and Metrics ---
-        st.header("Filtered Service Tickets")
-        st.markdown(f"Displaying data from **{start_date.strftime('%Y-%m-%d')}** to **{end_date.strftime('%Y-%m-%d')}**.")
-
-        # Display metrics
-        col1, col2 = st.columns(2)
-        col1.metric("Total Tickets Found", f"{filtered_df.shape[0]}")
-        col2.metric("Total Price (USD)", f"${filtered_df['Price'].sum():,.2f}")
-        
-        st.dataframe(
-            filtered_df.sort_values(by="Opened At", ascending=False).style.format({"Price": "${:,.2f}"}),
-            use_container_width=True
+        date_range = st.sidebar.date_input(
+            "Filter by 'Opened At' date:",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date,
         )
 
-        # Display dataset info
-        with st.expander("View Dataset Details"):
-            st.write("### Filtered Dataset Shape")
-            st.write(f"Rows: {filtered_df.shape[0]}, Columns: {filtered_df.shape[1]}")
-            st.write("### Column Information")
-            st.write(filtered_df.info())
+        if len(date_range) == 2:
+            start_date, end_date = date_range
+            start_ts = pd.to_datetime(start_date)
+            end_ts = pd.to_datetime(end_date).replace(hour=23, minute=59, second=59)
 
+            filtered_df = df[
+                df['Opened At'].notna() &
+                (df['Opened At'] >= start_ts) &
+                (df['Opened At'] <= end_ts)
+            ]
+
+            st.header("Filtered Service Tickets")
+            st.markdown(f"Displaying data from **{start_date.strftime('%Y-%m-%d')}** to **{end_date.strftime('%Y-%m-%d')}**.")
+
+            col1, col2 = st.columns(2)
+            col1.metric("Total Tickets Found", f"{filtered_df.shape[0]}")
+            col2.metric("Total Price (USD)", f"${filtered_df['Price'].sum():,.2f}")
+            
+            st.dataframe(
+                filtered_df.sort_values(by="Opened At", ascending=False).style.format({"Price": "${:,.2f}"}),
+                use_container_width=True
+            )
+        else:
+            st.warning("Please select a valid date range in the sidebar to view data.")
     else:
-        st.warning("Please select a valid date range in the sidebar to view data.")
+        st.warning("No valid dates found in the 'Opened At' column to create a filter.")
 
 else:
-    st.error("Could not fetch or process data from the API. Please check the token or API status.")
+    st.error("Could not fetch or process data from the API. Please check your API token, the API status, or your network connection.")
