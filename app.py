@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from centerpoint_api import fetch_service_data
-from ai_agents import generate_followup_email, generate_weekly_summary
 
 st.set_page_config(page_title="Hustad Sales & Service Dashboard", layout="wide")
 
@@ -28,9 +27,11 @@ if status:
 if domain:
     filtered_df = filtered_df[filtered_df['domain'].isin(domain)]
 
+# Always ensure openedAt is datetime for safe filtering
+filtered_df['openedAt'] = pd.to_datetime(filtered_df['openedAt'], errors='coerce')
+
 if len(date_range) == 2:
     start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-    filtered_df['openedAt'] = pd.to_datetime(filtered_df['openedAt'], errors='coerce')
     filtered_df = filtered_df[
         (filtered_df['openedAt'] >= start) & (filtered_df['openedAt'] <= end)
     ]
@@ -68,26 +69,3 @@ st.plotly_chart(px.pie(
 # Download filtered data
 st.subheader("⬇️ Download Filtered CSV")
 st.download_button("Download CSV", data=filtered_df.to_csv(index=False), file_name="filtered_requests.csv")
-
-# AI Tools
-st.header("🤖 AI-Powered Tools")
-tab1, tab2 = st.tabs(["📩 Follow-Up Generator", "📋 Weekly Sales Summary"])
-
-with tab1:
-    st.subheader("Generate Follow-Up Email")
-    sample = filtered_df[filtered_df['description'].notna()].sample(1) if not filtered_df.empty else pd.DataFrame()
-    if not sample.empty:
-        desc = sample.iloc[0]['description']
-        opp_type = sample.iloc[0]['opportunityType']
-        domain_val = sample.iloc[0]['domain']
-        if st.button("Generate Email"):
-            email = generate_followup_email(opp_type, domain_val, desc, "Team")
-            st.success(email)
-    else:
-        st.info("No records with descriptions found.")
-
-with tab2:
-    st.subheader("Weekly AI Summary")
-    if st.button("Generate Summary"):
-        summary = generate_weekly_summary(filtered_df)
-        st.info(summary)
