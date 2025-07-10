@@ -10,6 +10,51 @@ HEADERS = {
 
 @st.cache_data
 def fetch_service_data():
-    res = requests.get(f"{BASE_URL}/services", headers=HEADERS)
-    data = res.json().get("data", [])
-    return pd.DataFrame([d["attributes"] for d in data])
+    url = f"{BASE_URL}/services?include=billedCompany,property,accountManager"
+    
+    try:
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        res.raise_for_status()
+    except Exception as e:
+        st.error(f"❌ API Error: {e}")
+        return pd.DataFrame()
+    
+    data = res.json()
+
+    # Lookup table for resolving IDs
+    included_lookup = {}
+    for item in data.get("included", []):
+        _type = item.get("type")
+        _id = item.get("id")
+        name = item.get("attributes", {}).get("name", "Unknown")
+        included_lookup[(_type, _id)] = name
+
+    # Helper function to resolve relationship name
+    def resolve(rel, rel_type):
+        if not rel:
+            return "Unknown"
+        _id = rel.get("data", {}).get("id")
+        return included_lookup.get((rel_type, _id), "Unknown") if _id else "Unknown"
+
+    records = []
+    for item in data.get("data", []):
+        attr = item.get("attributes", {})
+        rels = item.get("relationships", {})
+
+        records.append({
+            "Ticket ID": attr.get("name"),
+            "Description": attr.get("description"),
+            "Company": resolve(rels.get("billedCompany"), "companies"),
+            "Property": resolve(rels.get("property"), "properties"),
+            "Manager": resolve(rels.get("accountManager"), "employees"),
+            "Status": attr.get("displayStatus", "Unknown"),
+            "Type": attr.get("opportunityType", "Unknown"),
+            "Opened At": attr.get("openedAt"),
+            "Price": attr.get("price", 0)
+        })
+
+    df = pd.DataFrame(records)
+    df["Opened At"] = pd.to_datetime(df["Opened At"], errors="coerce")
+    df["Price"] = pd.to_numeric(df["Price"], errors="coerce").fillna(0)
+    
+    return df
