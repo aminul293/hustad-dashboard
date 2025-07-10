@@ -1,37 +1,45 @@
-
-import pandas as pd
 import requests
+import pandas as pd
 import streamlit as st
+
+BASE_URL = "https://api.centerpointconnect.io/centerpoint"
+HEADERS = {
+    "Authorization": st.secrets["centerpoint"]["api_key"],
+    "Accept": "application/json"
+}
 
 @st.cache_data
 def fetch_service_data():
-    try:
-        headers = {
-            "Authorization": st.secrets["centerpoint"]["api_key"],
-            "Accept": "application/json"
-        }
+    res = requests.get(f"{BASE_URL}/services", headers=HEADERS)
+    data = res.json().get("data", [])
+    return pd.DataFrame([d["attributes"] for d in data])
 
-        url = "https://api.centerpointconnect.io/centerpoint/services"
+@st.cache_data
+def fetch_invoices():
+    res = requests.get(f"{BASE_URL}/invoices", headers=HEADERS)
+    data = res.json().get("data", [])
+    return pd.DataFrame([d["attributes"] for d in data])
 
-        response = requests.get(url, headers=headers)
-        if response.status_code != 200:
-            st.error(f"API Error: {response.status_code}")
-            st.stop()
+@st.cache_data
+def fetch_companies():
+    res = requests.get(f"{BASE_URL}/companies", headers=HEADERS)
+    data = res.json().get("data", [])
+    return pd.DataFrame([d["attributes"] for d in data])
 
-        json_data = response.json()
-        data = json_data.get("data", [])
+@st.cache_data
+def fetch_properties():
+    res = requests.get(f"{BASE_URL}/properties", headers=HEADERS)
+    data = res.json().get("data", [])
+    return pd.DataFrame([d["attributes"] for d in data])
 
-        # Flatten nested 'attributes' for each item in data
-        records = [item["attributes"] for item in data if "attributes" in item]
-        df = pd.DataFrame(records)
+@st.cache_data
+def fetch_employees():
+    res = requests.get(f"{BASE_URL}/employees", headers=HEADERS)
+    data = res.json().get("data", [])
+    return pd.DataFrame([d["attributes"] for d in data])
 
-        # Attempt to convert dates and numeric fields
-        for col in df.columns:
-            if "date" in col.lower() or "at" in col.lower():
-                df[col] = pd.to_datetime(df[col], errors='coerce')
-
-        return df
-
-    except Exception as e:
-        st.error(f"Exception occurred: {e}")
-        st.stop()
+@st.cache_data
+def fetch_opportunities():
+    res = requests.get(f"{BASE_URL}/opportunities", headers=HEADERS)
+    data = res.json().get("data", [])
+    return pd.DataFrame([d["attributes"] for d in data])
