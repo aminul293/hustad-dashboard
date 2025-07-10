@@ -44,17 +44,24 @@ col4.metric("Total Quoted Amount", f"${filtered_df['price'].sum():,.2f}")
 
 # Charts
 st.subheader("📊 Requests by Opportunity Type")
+opptype_counts = filtered_df['opportunityType'].value_counts().reset_index()
+opptype_counts.columns = ['Opportunity Type', 'Count']
 st.plotly_chart(px.bar(
-    filtered_df['opportunityType'].value_counts().reset_index(),
-    x='index', y='opportunityType',
-    labels={'index': 'Type', 'opportunityType': 'Count'}
+    opptype_counts,
+    x='Opportunity Type',
+    y='Count',
+    labels={'Opportunity Type': 'Type', 'Count': 'Count'},
+    title='Request Volume by Type'
 ))
 
 st.subheader("📌 Requests by Status")
+status_counts = filtered_df['displayStatus'].value_counts().reset_index()
+status_counts.columns = ['Status', 'Count']
 st.plotly_chart(px.pie(
-    filtered_df['displayStatus'].value_counts().reset_index(),
-    names='index', values='displayStatus',
-    title='Service Status'
+    status_counts,
+    names='Status',
+    values='Count',
+    title='Service Request Status Breakdown'
 ))
 
 # Download filtered data
@@ -63,7 +70,6 @@ st.download_button("Download CSV", data=filtered_df.to_csv(index=False), file_na
 
 # AI Tools
 st.header("🤖 AI-Powered Tools")
-
 tab1, tab2 = st.tabs(["📩 Follow-Up Generator", "📋 Weekly Sales Summary"])
 
 with tab1:
