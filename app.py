@@ -48,3 +48,20 @@ def fetch_service_data():
     df["Opened At"] = pd.to_datetime(df["Opened At"], errors="coerce")
     df["Price"] = pd.to_numeric(df["Price"], errors="coerce").fillna(0)
     return df
+
+
+
+
+import streamlit as st
+from centerpoint_api import fetch_service_data
+
+st.set_page_config(page_title="🛠 Service List", layout="wide")
+
+st.title("📋 Service List from Centerpoint API")
+
+df = fetch_service_data()
+
+if df.empty:
+    st.warning("No data available.")
+else:
+    st.dataframe(df, use_container_width=True)
