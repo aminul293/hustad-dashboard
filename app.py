@@ -1,94 +1,61 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from centerpoint_api import fetch_service_data
+from centerpoint_api import (
+    fetch_service_data,
+    fetch_invoices,
+    fetch_companies,
+    fetch_properties
+)
 
-st.set_page_config(page_title="Hustad Sales & Service Dashboard", layout="wide")
+st.set_page_config(page_title="Hustad Live Dashboard", layout="wide")
 
-# Load from API
-df = fetch_service_data()
+# Load all datasets
+df_services = fetch_service_data()
+df_invoices = fetch_invoices()
+df_companies = fetch_companies()
+df_properties = fetch_properties()
 
-# Clean column values
-df['opportunityType'] = df['opportunityType'].fillna("Unknown")
-df['type'] = df['type'].fillna("Unknown")
-df['domain'] = df['domain'].fillna("Unknown")
-df['openedAt'] = pd.to_datetime(df['openedAt'], errors='coerce')
-df['price'] = pd.to_numeric(df['price'], errors='coerce').fillna(0)
+# Format key fields
+df_services['openedAt'] = pd.to_datetime(df_services['openedAt'], errors='coerce')
+df_services['opportunityType'] = df_services['opportunityType'].fillna("Unknown")
+df_services['displayStatus'] = df_services['displayStatus'].fillna("Unknown")
+df_services['domain'] = df_services['domain'].fillna("Unknown")
+df_services['price'] = pd.to_numeric(df_services['price'], errors='coerce').fillna(0)
 
-# Sidebar filters
-st.sidebar.header("🔎 Filter Data")
-rep = st.sidebar.multiselect("Opportunity Type", options=df['opportunityType'].dropna().unique())
-status = st.sidebar.multiselect("Status", options=df['displayStatus'].dropna().unique())
-domain = st.sidebar.multiselect("Domain", options=df['domain'].dropna().unique())
-date_range = st.sidebar.date_input("Opened Date Range", [])
+# Tabs layout
+tab1, tab2, tab3, tab4 = st.tabs(["🛠️ Services", "🧾 Invoices", "🏢 Companies", "🏗️ Properties"])
 
-# Apply filters
-filtered_df = df.copy()
+with tab1:
+    st.title("🛠️ Service Requests")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total", len(df_services))
+    col2.metric("Backlog", df_services[df_services['displayStatus'] == 'Backlog'].shape[0])
+    col3.metric("In Progress", df_services[df_services['displayStatus'] == 'In Progress'].shape[0])
+    col4.metric("Quoted", f"${df_services['price'].sum():,.2f}")
 
-if rep:
-    filtered_df = filtered_df[filtered_df['opportunityType'].isin(rep)]
+    st.plotly_chart(px.bar(
+        df_services['domain'].value_counts().reset_index().rename(columns={"index": "Domain", "domain": "Count"}),
+        x='Domain', y='Count', title="Requests by Domain"
+    ))
 
-if status:
-    filtered_df = filtered_df[filtered_df['displayStatus'].isin(status)]
+    st.subheader("📋 Full Service Data")
+    st.dataframe(df_services)
 
-if domain:
-    filtered_df = filtered_df[filtered_df['domain'].isin(domain)]
+with tab2:
+    st.title("🧾 Invoices")
+    st.write(f"Total Invoices: {len(df_invoices)}")
+    st.dataframe(df_invoices)
 
-if len(date_range) == 2:
-    start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-    filtered_df = filtered_df[
-        (filtered_df['openedAt'] >= start) & (filtered_df['openedAt'] <= end)
-    ]
+with tab3:
+    st.title("🏢 Companies")
+    st.write(f"Total Companies: {len(df_companies)}")
+    st.dataframe(df_companies)
 
-# KPI Summary
-st.title("🚀 Hustad Sales & Service Dashboard")
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Requests", len(filtered_df))
-col2.metric("Backlog", filtered_df[filtered_df['displayStatus'] == 'Backlog'].shape[0])
-col3.metric("In Progress", filtered_df[filtered_df['displayStatus'] == 'In Progress'].shape[0])
-col4.metric("Total Quoted Amount", f"${filtered_df['price'].sum():,.2f}")
+with tab4:
+    st.title("🏗️ Properties")
+    st.write(f"Total Properties: {len(df_properties)}")
+    st.dataframe(df_properties)
 
-# Opportunity Type Chart
-st.subheader("📊 Requests by Opportunity Type")
-opptype_counts = filtered_df['opportunityType'].value_counts().reset_index()
-opptype_counts.columns = ['Opportunity Type', 'Count']
-st.plotly_chart(px.bar(
-    opptype_counts,
-    x='Opportunity Type',
-    y='Count',
-    labels={'Opportunity Type': 'Type', 'Count': 'Count'},
-    title='Request Volume by Type'
-))
-
-# Status Chart
-st.subheader("📌 Requests by Status")
-status_counts = filtered_df['displayStatus'].value_counts().reset_index()
-status_counts.columns = ['Status', 'Count']
-st.plotly_chart(px.pie(
-    status_counts,
-    names='Status',
-    values='Count',
-    title='Service Request Status Breakdown'
-))
-
-# Domain Chart
-st.subheader("🏷️ Requests by Domain")
-domain_counts = filtered_df['domain'].value_counts().reset_index()
-domain_counts.columns = ['Domain', 'Count']
-st.plotly_chart(px.bar(
-    domain_counts,
-    x='Domain',
-    y='Count',
-    title='Requests by Domain'
-))
-
-# Download
-st.subheader("⬇️ Download Filtered Data")
-st.download_button("Download CSV", data=filtered_df.to_csv(index=False), file_name="filtered_requests.csv")
-
-# Show Data Table
-with st.expander("📋 View Data"):
-    st.dataframe(filtered_df.sort_values(by='openedAt', ascending=False), use_container_width=True)
-
-# API Status Badge
-st.caption(f"✅ Connected to Centerpoint API · {len(df)} records loaded")
+# API confirmation
+st.sidebar.success(f"✅ Live API connected")
