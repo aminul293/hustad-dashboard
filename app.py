@@ -1,69 +1,50 @@
-# app.py
-import streamlit as st
+# centerpoint_api.py
+import requests
 import pandas as pd
-import plotly.express as px
-from datetime import datetime, timedelta
-from centerpoint_api import fetch_service_data
+import streamlit as st
 
-st.set_page_config(page_title="🛠 Hustad Live Services Dashboard", layout="wide")
+BASE_URL = "https://api.centerpointconnect.io/centerpoint"
+HEADERS = {
+    "Authorization": st.secrets["centerpoint"]["api_key"],
+    "Accept": "application/json"
+}
 
-# Load and clean data
-services_df = fetch_service_data()
-services_df['openedAt'] = pd.to_datetime(services_df['openedAt'], errors='coerce')
-services_df['startDate'] = pd.to_datetime(services_df['startDate'], errors='coerce')
-services_df['opportunityType'] = services_df['opportunityType'].fillna("Unknown")
-services_df['displayStatus'] = services_df['displayStatus'].fillna("Unknown")
-services_df['domain'] = services_df['domain'].fillna("Unknown")
-services_df['price'] = pd.to_numeric(services_df['price'], errors='coerce').fillna(0)
+@st.cache_data
+def fetch_service_data():
+    url = f"{BASE_URL}/services?include=billedCompany,property,accountManager"
+    response = requests.get(url, headers=HEADERS)
+    data = response.json()
 
-# Filter: show only services from the past 12 months
-one_year_ago = datetime.today() - timedelta(days=365)
-recent_df = services_df[services_df['startDate'] >= one_year_ago]
+    rows = []
+    included_lookup = {}
 
-# Date range display
-valid_dates = recent_df['startDate'].dropna()
-if not valid_dates.empty:
-    st.caption(f"📅 Displaying records from {valid_dates.min().date()} to {valid_dates.max().date()}")
-else:
-    st.warning("No recent records found in the last 12 months.")
+    # Build lookup from included data
+    for entry in data.get("included", []):
+        included_lookup[(entry["type"], entry["id"])] = entry["attributes"].get("name")
 
-# KPIs
-st.title("🛠 Recent Service Requests Overview")
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Requests", len(recent_df))
-col2.metric("Backlog", recent_df[recent_df['displayStatus'] == 'Backlog'].shape[0])
-col3.metric("In Progress", recent_df[recent_df['displayStatus'] == 'In Progress'].shape[0])
-col4.metric("Total Quoted", f"${recent_df['price'].sum():,.2f}")
+    for item in data["data"]:
+        attr = item["attributes"]
+        rels = item.get("relationships", {})
 
-# Chart: Requests by Domain
-domain_counts = recent_df['domain'].value_counts().reset_index()
-domain_counts.columns = ['Domain', 'Count']
-if not domain_counts.empty:
-    st.plotly_chart(px.bar(
-        domain_counts, x='Domain', y='Count', title="Requests by Domain"
-    ))
-else:
-    st.info("No data available for domain chart.")
+        def get_name(rel_key):
+            rel_data = rels.get(rel_key, {}).get("data")
+            if rel_data:
+                return included_lookup.get((rel_data["type"], rel_data["id"]), "Unknown")
+            return "Unknown"
 
-# Chart: Opportunity Type
-opptype_counts = recent_df['opportunityType'].value_counts().reset_index()
-opptype_counts.columns = ['Opportunity Type', 'Count']
-if not opptype_counts.empty:
-    st.plotly_chart(px.bar(
-        opptype_counts, x='Opportunity Type', y='Count', title="Requests by Opportunity Type"
-    ))
+        rows.append({
+            "Ticket ID": attr.get("name"),
+            "Description": attr.get("description"),
+            "Company": get_name("billedCompany"),
+            "Property": get_name("property"),
+            "Manager": get_name("accountManager"),
+            "Status": attr.get("displayStatus"),
+            "Type": attr.get("opportunityType"),
+            "Opened At": attr.get("openedAt"),
+            "Price": attr.get("price")
+        })
 
-# Chart: Status Breakdown
-status_counts = recent_df['displayStatus'].value_counts().reset_index()
-status_counts.columns = ['Status', 'Count']
-if not status_counts.empty:
-    st.plotly_chart(px.pie(
-        status_counts, names='Status', values='Count', title='Status Breakdown'
-    ))
-
-# Data table
-with st.expander("📋 View Recent Service Records"):
-    st.dataframe(recent_df.sort_values(by='startDate', ascending=False), use_container_width=True)
-
-# API status
-st.sidebar.success("✅ Live API Connected: /services")
+    df = pd.DataFrame(rows)
+    df["Opened At"] = pd.to_datetime(df["Opened At"], errors="coerce")
+    df["Price"] = pd.to_numeric(df["Price"], errors="coerce").fillna(0)
+    return df
