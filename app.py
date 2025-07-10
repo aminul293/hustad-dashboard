@@ -1,61 +1,56 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from centerpoint_api import (
-    fetch_service_data,
-    fetch_invoices,
-    fetch_companies,
-    fetch_properties
-)
+from centerpoint_api import fetch_service_data
 
-st.set_page_config(page_title="Hustad Live Dashboard", layout="wide")
+st.set_page_config(page_title="🛠 Hustad Live Services Dashboard", layout="wide")
 
-# Load all datasets
-df_services = fetch_service_data()
-df_invoices = fetch_invoices()
-df_companies = fetch_companies()
-df_properties = fetch_properties()
+# Load and clean data
+services_df = fetch_service_data()
+services_df['openedAt'] = pd.to_datetime(services_df['openedAt'], errors='coerce')
+services_df['opportunityType'] = services_df['opportunityType'].fillna("Unknown")
+services_df['displayStatus'] = services_df['displayStatus'].fillna("Unknown")
+services_df['domain'] = services_df['domain'].fillna("Unknown")
+services_df['price'] = pd.to_numeric(services_df['price'], errors='coerce').fillna(0)
 
-# Format key fields
-df_services['openedAt'] = pd.to_datetime(df_services['openedAt'], errors='coerce')
-df_services['opportunityType'] = df_services['opportunityType'].fillna("Unknown")
-df_services['displayStatus'] = df_services['displayStatus'].fillna("Unknown")
-df_services['domain'] = df_services['domain'].fillna("Unknown")
-df_services['price'] = pd.to_numeric(df_services['price'], errors='coerce').fillna(0)
+# KPIs
+st.title("🛠 Service Requests Overview")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Total Requests", len(services_df))
+col2.metric("Backlog", services_df[services_df['displayStatus'] == 'Backlog'].shape[0])
+col3.metric("In Progress", services_df[services_df['displayStatus'] == 'In Progress'].shape[0])
+col4.metric("Total Quoted", f"${services_df['price'].sum():,.2f}")
 
-# Tabs layout
-tab1, tab2, tab3, tab4 = st.tabs(["🛠️ Services", "🧾 Invoices", "🏢 Companies", "🏗️ Properties"])
-
-with tab1:
-    st.title("🛠️ Service Requests")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total", len(df_services))
-    col2.metric("Backlog", df_services[df_services['displayStatus'] == 'Backlog'].shape[0])
-    col3.metric("In Progress", df_services[df_services['displayStatus'] == 'In Progress'].shape[0])
-    col4.metric("Quoted", f"${df_services['price'].sum():,.2f}")
-
+# Chart: Requests by Domain
+domain_counts = services_df['domain'].value_counts().reset_index()
+domain_counts.columns = ['Domain', 'Count']
+if not domain_counts.empty:
     st.plotly_chart(px.bar(
-        df_services['domain'].value_counts().reset_index().rename(columns={"index": "Domain", "domain": "Count"}),
-        x='Domain', y='Count', title="Requests by Domain"
+        domain_counts, x='Domain', y='Count', title="Requests by Domain"
+    ))
+else:
+    st.info("No data available for domain chart.")
+
+# Chart: Opportunity Type
+opptype_counts = services_df['opportunityType'].value_counts().reset_index()
+opptype_counts.columns = ['Opportunity Type', 'Count']
+if not opptype_counts.empty:
+    st.plotly_chart(px.bar(
+        opptype_counts, x='Opportunity Type', y='Count', title="Requests by Opportunity Type"
     ))
 
-    st.subheader("📋 Full Service Data")
-    st.dataframe(df_services)
+# Chart: Status Breakdown
+status_counts = services_df['displayStatus'].value_counts().reset_index()
+status_counts.columns = ['Status', 'Count']
+if not status_counts.empty:
+    st.plotly_chart(px.pie(
+        status_counts, names='Status', values='Count', title='Status Breakdown'
+    ))
 
-with tab2:
-    st.title("🧾 Invoices")
-    st.write(f"Total Invoices: {len(df_invoices)}")
-    st.dataframe(df_invoices)
+# Data table
+with st.expander("📋 View Raw Data"):
+    st.dataframe(services_df.sort_values(by='openedAt', ascending=False), use_container_width=True)
 
-with tab3:
-    st.title("🏢 Companies")
-    st.write(f"Total Companies: {len(df_companies)}")
-    st.dataframe(df_companies)
-
-with tab4:
-    st.title("🏗️ Properties")
-    st.write(f"Total Properties: {len(df_properties)}")
-    st.dataframe(df_properties)
-
-# API confirmation
-st.sidebar.success(f"✅ Live API connected")
+# API status
+st.sidebar.success("✅ Live API Connected: /services")
