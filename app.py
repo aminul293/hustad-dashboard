@@ -1,9 +1,8 @@
-# In your main file named: app.py
-
+# app.py
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from centerpoint_api import fetch_service_data # <-- IMPORTANT: Import your function
+from centerpoint_api import fetch_service_data  # <-- Make sure this function is working
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -38,31 +37,26 @@ if not df.empty:
 
     # --- Filter DataFrame ---
     if len(date_range) == 2:
-        # --- 🛠️ FIX APPLIED HERE ---
-        # `date_range` gives naive dates. Convert them to timezone-naive Timestamps.
         start_ts = pd.to_datetime(date_range[0])
         end_ts = pd.to_datetime(date_range[1]).replace(hour=23, minute=59, second=59)
 
-        # Create a temporary, timezone-naive version of the 'Opened At' column for comparison.
-        # This handles both cases: where the original data is aware or naive.
         opened_at_for_comparison = df['Opened At']
-        if pd.api.types.is_datetime64_any_dtype(opened_at_for_comparison) and opened_at_for_comparison.dt.tz is not None:
-            opened_at_for_comparison = opened_at_for_comparison.dt.tz_convert(None)
+        if pd.api.types.is_datetime64_any_dtype(opened_at_for_comparison):
+            if hasattr(opened_at_for_comparison.dt, 'tz') and opened_at_for_comparison.dt.tz is not None:
+                opened_at_for_comparison = opened_at_for_comparison.dt.tz_convert(None)
 
-        # Perform the filter using two naive datetime series, which is a valid comparison.
         mask = (
             df['Opened At'].notna() &
             (opened_at_for_comparison >= start_ts) &
             (opened_at_for_comparison <= end_ts)
         )
         filtered_df = df[mask]
-        # --- END OF FIX ---
     else:
         filtered_df = df.copy()
 
     # --- Display Metrics and Data ---
     st.header("Filtered Service Tickets")
-    
+
     if len(date_range) == 2:
         st.markdown(f"Displaying data from **{date_range[0].strftime('%Y-%m-%d')}** to **{date_range[1].strftime('%Y-%m-%d')}**.")
 
@@ -76,6 +70,4 @@ if not df.empty:
     )
 
 else:
-    st.error("Failed to load data from Centerpoint API. Check the error message above and ensure your secrets are set correctly.")```
-
-By replacing your `app.py` with this version, the date filtering will now work correctly regardless of timezones, and your dashboard should be fully operational.
+    st.error("❌ Failed to load data from Centerpoint API. Check your token or endpoint.")
