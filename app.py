@@ -24,6 +24,7 @@ def fetch_service_data():
 
     data = res.json()
 
+    # Map included entities for relationships
     included_lookup = {}
     for item in data.get("included", []):
         _type = item.get("type")
@@ -39,6 +40,7 @@ def fetch_service_data():
                 return included_lookup.get((rel_type, _id), "Unknown") if _id else "Unknown"
         return "Unknown"
 
+    # Assemble data
     records = []
     for item in data.get("data", []):
         attr = item.get("attributes", {})
@@ -61,23 +63,24 @@ def fetch_service_data():
     df["Opened At"] = pd.to_datetime(df["Opened At"], errors="coerce")
     df["Created Date"] = pd.to_datetime(df["Created Date"], errors="coerce")
     df["Price"] = pd.to_numeric(df["Price"], errors="coerce").fillna(0)
-
     return df
 
-# --- Streamlit App Setup ---
+# --- Streamlit Layout ---
 st.set_page_config(page_title="📡 Centerpoint Service Dashboard", layout="wide")
 st.title("📡 Centerpoint Service Dashboard")
 st.markdown("Live service data from the Centerpoint API.")
 
+# --- Load data ---
 with st.spinner("Fetching latest service data..."):
     df = fetch_service_data()
 
+# --- UI + Filtering ---
 if not df.empty:
     st.sidebar.header("Filter Options")
 
-    if not df['Created Date'].isnull().all():
-        min_date = df['Created Date'].min().date()
-        max_date = df['Created Date'].max().date()
+    if not df["Created Date"].isnull().all():
+        min_date = df["Created Date"].min().date()
+        max_date = df["Created Date"].max().date()
 
         date_range = st.sidebar.date_input(
             "Filter by 'Created Date':",
@@ -105,8 +108,8 @@ if not df.empty:
     else:
         filtered_df = df.copy()
 
+    # --- Display Output ---
     st.header("Filtered Service Tickets")
-
     if len(date_range) == 2:
         st.markdown(f"Displaying data from **{date_range[0].strftime('%Y-%m-%d')}** to **{date_range[1].strftime('%Y-%m-%d')}**.")
 
@@ -119,4 +122,4 @@ if not df.empty:
         use_container_width=True
     )
 else:
-    st.error("Failed to load data from Centerpoint API. Check the error message above and ensure your secrets are set correctly.")
+    st.error("Failed to load data from Centerpoint API. Check the error message above and ensure your secrets are correct.")
