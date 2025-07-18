@@ -159,7 +159,10 @@ if not df.empty:
 
     with st.expander("🧾 Invoice Data"):
         try:
-            invoice_display_df = pd.json_normalize(df_invoices.to_dict(orient="records"))
+            invoice_display_df = df_invoices.copy()
+            for col in invoice_display_df.columns:
+                if invoice_display_df[col].dtype == "object":
+                    invoice_display_df[col] = invoice_display_df[col].astype(str)
             st.dataframe(invoice_display_df.head(100), use_container_width=True)
         except Exception as e:
             st.error(f"Failed to display invoice data: {e}")
