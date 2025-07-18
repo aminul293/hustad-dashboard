@@ -158,7 +158,12 @@ if not df.empty:
         st.dataframe(df_opps.head(100), use_container_width=True)
 
     with st.expander("🧾 Invoice Data"):
-        st.dataframe(df_invoices.head(100), use_container_width=True)
+    # Try flattening nested fields for display
+    try:
+        invoice_display_df = pd.json_normalize(df_invoices.to_dict(orient="records"))
+        st.dataframe(invoice_display_df.head(100), use_container_width=True)
+    except Exception as e:
+        st.error(f"Failed to display invoice data: {e}")
 
 else:
     st.error("Failed to load data from Centerpoint API. Check the error message above and ensure your secrets are set correctly.")
