@@ -93,14 +93,20 @@ if not df.empty:
     breakdown1, breakdown2, breakdown3 = st.columns(3)
 
     with breakdown1:
-        st.plotly_chart(px.bar(filtered['Rep'].value_counts().reset_index(), x='index', y='Rep',
-                               labels={'index': 'Rep', 'Rep': 'Opportunities'}), use_container_width=True)
+        rep_counts = filtered['Rep'].value_counts().reset_index()
+        rep_counts.columns = ['Rep', 'Count']
+        st.plotly_chart(px.bar(rep_counts, x='Rep', y='Count',
+                               labels={'Rep': 'Account Manager', 'Count': 'Opportunities'}),
+                        use_container_width=True)
+
     with breakdown2:
         st.plotly_chart(px.pie(filtered, names='Client', title="By Client"), use_container_width=True)
+
     with breakdown3:
-        st.plotly_chart(px.bar(filtered['attributes.opportunityType'].value_counts().reset_index(),
-                               x='index', y='attributes.opportunityType',
-                               labels={'index': 'Type', 'attributes.opportunityType': 'Count'}),
+        type_counts = filtered['attributes.opportunityType'].value_counts().reset_index()
+        type_counts.columns = ['Type', 'Count']
+        st.plotly_chart(px.bar(type_counts, x='Type', y='Count',
+                               labels={'Type': 'Opportunity Type', 'Count': 'Count'}),
                         use_container_width=True)
 
     # Table
