@@ -2,55 +2,67 @@
 
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from centerpoint_api import fetch_service_data
-from datetime import datetime
 
-st.set_page_config(page_title="📡 Centerpoint Service Dashboard", layout="wide")
+st.set_page_config(page_title="📊 Centerpoint Dashboard", layout="wide")
+st.title("📊 Live Centerpoint Sales Dashboard")
 
-st.title("📡 Centerpoint Service Dashboard")
-st.markdown("Live service data from the Centerpoint Production API.")
-
-with st.spinner("Fetching data..."):
+with st.spinner("Fetching live data..."):
     df = fetch_service_data()
 
-if not df.empty:
-    st.sidebar.header("📅 Filter Options")
+if df.empty:
+    st.error("No data received from API.")
+    st.stop()
 
-    if not df['Opened At'].isnull().all():
-        min_date = df['Opened At'].min().date()
-        max_date = df['Opened At'].max().date()
-        date_range = st.sidebar.date_input(
-            "Filter by 'Opened At':",
-            value=(min_date, max_date),
-            min_value=min_date,
-            max_value=max_date
-        )
-    else:
-        date_range = []
+# Filter
+st.sidebar.header("Filters")
+min_date, max_date = df["created_date"].min(), df["created_date"].max()
+date_range = st.sidebar.date_input("Date Range", [min_date, max_date])
+rep_list = ["All"] + sorted(df["opportunity_manager"].dropna().unique().tolist())
+selected_rep = st.sidebar.selectbox("Filter by Rep", rep_list)
 
-    # Date filter logic
-    if len(date_range) == 2:
-        start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]).replace(hour=23, minute=59)
-        opened_at = df["Opened At"]
-        if opened_at.dt.tz is not None:
-            opened_at = opened_at.dt.tz_convert(None)
-        filtered_df = df[(opened_at >= start) & (opened_at <= end)]
-    else:
-        filtered_df = df.copy()
+filtered_df = df.copy()
+if len(date_range) == 2:
+    start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+    filtered_df = filtered_df[filtered_df["created_date"].between(start, end)]
 
-    st.header("🧾 Filtered Service Tickets")
+if selected_rep != "All":
+    filtered_df = filtered_df[filtered_df["opportunity_manager"] == selected_rep]
 
-    if len(date_range) == 2:
-        st.caption(f"Showing data from **{start.date()}** to **{end.date()}**")
+# KPIs
+st.subheader("📌 Summary Metrics")
+col1, col2 = st.columns(2)
+col1.metric("Closed Transactions", f"{filtered_df.shape[0]}")
+col2.metric("Total Sales", f"${filtered_df['sale_price'].sum():,.0f}")
 
-    col1, col2 = st.columns(2)
-    col1.metric("Tickets", f"{filtered_df.shape[0]}")
-    col2.metric("Total Price (USD)", f"${filtered_df['Price'].sum():,.2f}")
+# Charts
+st.subheader("🧑 Top Performing Reps")
+top_reps = (
+    filtered_df.groupby("opportunity_manager")["sale_price"]
+    .sum()
+    .sort_values(ascending=False)
+    .reset_index()
+)
+fig1 = px.bar(top_reps, x="opportunity_manager", y="sale_price", title="Sales by Rep", text_auto=True)
+st.plotly_chart(fig1, use_container_width=True)
 
-    st.dataframe(
-        filtered_df.sort_values(by="Opened At", ascending=False).style.format({"Price": "${:,.2f}"}),
-        use_container_width=True
-    )
+st.subheader("📅 Weekly Sales Trend")
+trend = (
+    filtered_df.set_index("created_date")
+    .resample("W")["sale_price"]
+    .sum()
+    .reset_index()
+)
+fig2 = px.line(trend, x="created_date", y="sale_price", title="Weekly Sales")
+st.plotly_chart(fig2, use_container_width=True)
 
-else:
-    st.error("❌ No data returned from the API.")
+# High Value
+st.subheader("🏆 High-Value Transactions")
+high_value = filtered_df[filtered_df["sale_price"] > 100000].sort_values(by="sale_price", ascending=False)
+st.dataframe(high_value)
+
+# Raw Table
+st.markdown("### 📋 Full Data Table")
+st.dataframe(filtered_df)
+
