@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 
 # --- API CONFIG ---
@@ -24,7 +24,6 @@ def fetch_service_data():
 
     data = res.json()
 
-    # Map included entities for relationships
     included_lookup = {}
     for item in data.get("included", []):
         _type = item.get("type")
@@ -40,7 +39,6 @@ def fetch_service_data():
                 return included_lookup.get((rel_type, _id), "Unknown") if _id else "Unknown"
         return "Unknown"
 
-    # Assemble data
     records = []
     for item in data.get("data", []):
         attr = item.get("attributes", {})
@@ -63,30 +61,31 @@ def fetch_service_data():
     df["Opened At"] = pd.to_datetime(df["Opened At"], errors="coerce")
     df["Created Date"] = pd.to_datetime(df["Created Date"], errors="coerce")
     df["Price"] = pd.to_numeric(df["Price"], errors="coerce").fillna(0)
+
     return df
 
-# --- Streamlit Layout ---
+# --- Streamlit App Setup ---
 st.set_page_config(page_title="📡 Centerpoint Service Dashboard", layout="wide")
 st.title("📡 Centerpoint Service Dashboard")
 st.markdown("Live service data from the Centerpoint API.")
 
-# --- Load data ---
 with st.spinner("Fetching latest service data..."):
     df = fetch_service_data()
 
-# --- UI + Filtering ---
 if not df.empty:
     st.sidebar.header("Filter Options")
 
-    if not df["Created Date"].isnull().all():
-        min_date = df["Created Date"].min().date()
-        max_date = df["Created Date"].max().date()
+    if not df['Created Date'].isnull().all():
+        min_date = df['Created Date'].min().date()
+        max_data_date = df['Created Date'].max().date()
+        today = datetime.today().date()
+        max_display_date = max(max_data_date, today + timedelta(days=7))
 
         date_range = st.sidebar.date_input(
             "Filter by 'Created Date':",
-            value=(min_date, max_date),
+            value=(max_data_date - timedelta(days=7), max_data_date),
             min_value=min_date,
-            max_value=max_date,
+            max_value=max_display_date
         )
     else:
         date_range = []
@@ -105,11 +104,14 @@ if not df.empty:
             (created_for_comparison <= end_ts)
         )
         filtered_df = df[mask]
+
+        if filtered_df.empty:
+            st.warning("⚠️ No data found for the selected date range.")
     else:
         filtered_df = df.copy()
 
-    # --- Display Output ---
     st.header("Filtered Service Tickets")
+
     if len(date_range) == 2:
         st.markdown(f"Displaying data from **{date_range[0].strftime('%Y-%m-%d')}** to **{date_range[1].strftime('%Y-%m-%d')}**.")
 
@@ -122,4 +124,4 @@ if not df.empty:
         use_container_width=True
     )
 else:
-    st.error("Failed to load data from Centerpoint API. Check the error message above and ensure your secrets are correct.")
+    st.error("Failed to load data from Centerpoint API. Check the error message above and ensure your secrets are set correctly.")
