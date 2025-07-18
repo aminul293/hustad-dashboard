@@ -14,7 +14,7 @@ HEADERS = {
 
 @st.cache_data
 def fetch_opportunities():
-    url = f"{BASE_URL}/opportunities"
+    url = f"{BASE_URL}/opportunities?include=accountManager,billedCompany,property"
     try:
         res = requests.get(url, headers=HEADERS, timeout=10)
         res.raise_for_status()
@@ -24,23 +24,23 @@ def fetch_opportunities():
         return pd.DataFrame()
 
 # --- Streamlit App Setup ---
-st.set_page_config(page_title="📊 Opportunity Management Dashboard", layout="wide")
-st.title("📊 Opportunity Management Dashboard")
+st.set_page_config(page_title="\U0001F4CA Opportunity Management Dashboard", layout="wide")
+st.title("\U0001F4CA Opportunity Management Dashboard")
 st.markdown("Track service opportunities, performance trends, and pipeline insights from CenterPoint.")
 
 with st.spinner("Loading opportunity data..."):
     df = fetch_opportunities()
 
 if not df.empty:
-    st.sidebar.header("🔎 Filter Opportunities")
+    st.sidebar.header("\U0001F50E Filter Opportunities")
 
     # Basic cleanup & parsing
     df['Created Date'] = pd.to_datetime(df['attributes.createdAt'], errors='coerce')
     df['Closed Date'] = pd.to_datetime(df['attributes.closedAt'], errors='coerce')
     df['Status'] = df['attributes.displayStatus'].fillna("Unknown")
     df['Value'] = pd.to_numeric(df['attributes.price'], errors='coerce').fillna(0)
-    df['Rep'] = df['relationships.accountManager.data.id'].fillna("Unassigned")
-    df['Client'] = df['relationships.billedCompany.data.id'].fillna("Unknown")
+    df['Rep'] = df['attributes.accountManagerName'].fillna("Unassigned") if 'attributes.accountManagerName' in df.columns else "Unassigned"
+    df['Client'] = df['attributes.billedCompanyName'].fillna("Unknown") if 'attributes.billedCompanyName' in df.columns else "Unknown"
     df['Opportunity ID'] = df['id']
 
     # Filters
@@ -68,8 +68,8 @@ if not df.empty:
 
     # KPI cards
     total_opps = filtered.shape[0]
-    closed_opps = filtered[filtered['Status'] == 'Closed'].shape[0]
-    open_opps = filtered[filtered['Status'] != 'Closed'].shape[0]
+    closed_opps = filtered[filtered['Status'].str.lower() == 'closed'].shape[0]
+    open_opps = filtered[filtered['Status'].str.lower() != 'closed'].shape[0]
     win_rate = (closed_opps / total_opps) * 100 if total_opps > 0 else 0
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
@@ -81,12 +81,12 @@ if not df.empty:
     # Line chart - Opportunity trends over time
     trend = filtered.copy()
     trend['Month'] = trend['Created Date'].dt.to_period("M").astype(str)
-    st.subheader("📈 Opportunity Trend (Monthly)")
+    st.subheader("\U0001F4C8 Opportunity Trend (Monthly)")
     st.plotly_chart(px.line(trend.groupby(['Month', 'Status']).size().reset_index(name='Count'),
                             x='Month', y='Count', color='Status'), use_container_width=True)
 
     # Breakdown charts
-    st.subheader("📊 Opportunity Breakdown")
+    st.subheader("\U0001F4CA Opportunity Breakdown")
     breakdown1, breakdown2, breakdown3 = st.columns(3)
 
     with breakdown1:
@@ -101,7 +101,7 @@ if not df.empty:
                         use_container_width=True)
 
     # Table
-    st.subheader("📋 Opportunity Table")
+    st.subheader("\U0001F4CB Opportunity Table")
     st.dataframe(filtered[['Opportunity ID', 'Client', 'Rep', 'Status', 'Created Date', 'Value']]
                  .sort_values(by='Created Date', ascending=False), use_container_width=True)
 
