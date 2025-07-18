@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import requests
-from streamlit.errors import StreamlitAPIException  # Added to fix exception handling
+from streamlit.errors import StreamlitAPIException
 
 # --- API CONFIG ---
 BASE_URL = "https://api.centerpointconnect.io/centerpoint"
@@ -15,7 +15,6 @@ HEADERS = {
 @st.cache_data
 def fetch_service_data():
     url = f"{BASE_URL}/services?include=billedCompany,property,accountManager&sort=-openedAt"
-
     try:
         res = requests.get(url, headers=HEADERS, timeout=10)
         res.raise_for_status()
@@ -24,7 +23,6 @@ def fetch_service_data():
         return pd.DataFrame()
 
     data = res.json()
-
     included_lookup = {}
     for item in data.get("included", []):
         _type = item.get("type")
@@ -62,8 +60,29 @@ def fetch_service_data():
     df["Opened At"] = pd.to_datetime(df["Opened At"], errors="coerce")
     df["Created Date"] = pd.to_datetime(df["Created Date"], errors="coerce")
     df["Price"] = pd.to_numeric(df["Price"], errors="coerce").fillna(0)
-
     return df
+
+@st.cache_data
+def fetch_opportunities():
+    url = f"{BASE_URL}/opportunities"
+    try:
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        res.raise_for_status()
+        return pd.json_normalize(res.json().get("data", []))
+    except Exception as e:
+        st.warning(f"Failed to fetch opportunities: {e}")
+        return pd.DataFrame()
+
+@st.cache_data
+def fetch_invoices():
+    url = f"{BASE_URL}/invoices"
+    try:
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        res.raise_for_status()
+        return pd.json_normalize(res.json().get("data", []))
+    except Exception as e:
+        st.warning(f"Failed to fetch invoices: {e}")
+        return pd.DataFrame()
 
 # --- Streamlit App Setup ---
 st.set_page_config(page_title="📡 Centerpoint Service Dashboard", layout="wide")
@@ -72,6 +91,8 @@ st.markdown("Live service data from the Centerpoint API.")
 
 with st.spinner("Fetching latest service data..."):
     df = fetch_service_data()
+    df_opps = fetch_opportunities()
+    df_invoices = fetch_invoices()
 
 if not df.empty:
     st.sidebar.header("Filter Options")
@@ -85,7 +106,10 @@ if not df.empty:
         try:
             date_range = st.sidebar.date_input(
                 "Filter by 'Created Date':",
-                value=(max_data_date - timedelta(days=7), max_data_date),
+                value=(
+                    max(min_date, max_data_date - timedelta(days=7)),
+                    max_data_date
+                ),
                 min_value=min_date,
                 max_value=max_display_date
             )
@@ -128,5 +152,13 @@ if not df.empty:
         filtered_df.sort_values(by="Created Date", ascending=False).style.format({"Price": "${:,.2f}"}),
         use_container_width=True
     )
+
+    # --- Additional Sections ---
+    with st.expander("📋 Opportunities Data"):
+        st.dataframe(df_opps.head(100), use_container_width=True)
+
+    with st.expander("🧾 Invoice Data"):
+        st.dataframe(df_invoices.head(100), use_container_width=True)
+
 else:
     st.error("Failed to load data from Centerpoint API. Check the error message above and ensure your secrets are set correctly.")
