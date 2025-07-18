@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import requests
+from streamlit.errors import StreamlitAPIException  # Added to fix exception handling
 
 # --- API CONFIG ---
 BASE_URL = "https://api.centerpointconnect.io/centerpoint"
@@ -88,7 +89,7 @@ if not df.empty:
                 min_value=min_date,
                 max_value=max_display_date
             )
-        except st.StreamlitAPIException:
+        except StreamlitAPIException:
             st.sidebar.error("⚠️ Please select a date within the valid range.")
             date_range = []
     else:
