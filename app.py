@@ -46,13 +46,13 @@ if not df.empty:
     # Filters
     reps = df['Rep'].unique()
     clients = df['Client'].unique()
-    min_date = df['Created Date'].min().date()
-    max_date = df['Created Date'].max().date()
+    min_date = df['Created Date'].dropna().min().date()
+    max_date = df['Created Date'].dropna().max().date()
 
     selected_rep = st.sidebar.selectbox("Account Manager", options=["All"] + list(reps))
     selected_client = st.sidebar.selectbox("Client", options=["All"] + list(clients))
     status_filter = st.sidebar.multiselect("Status", options=df['Status'].unique())
-    date_range = st.sidebar.date_input("Created Date Range", value=(min_date, max_date))
+    date_range = st.sidebar.date_input("Created Date Range", value=(min_date, max_date), min_value=min_date, max_value=max_date)
 
     # Filter logic
     filtered = df.copy()
@@ -63,8 +63,11 @@ if not df.empty:
     if status_filter:
         filtered = filtered[filtered['Status'].isin(status_filter)]
     if len(date_range) == 2:
-        start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-        filtered = filtered[(filtered['Created Date'] >= start) & (filtered['Created Date'] <= end)]
+        try:
+            start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+            filtered = filtered[(filtered['Created Date'] >= start) & (filtered['Created Date'] <= end)]
+        except Exception as e:
+            st.warning("⚠️ Please select a valid date range within available data.")
 
     # KPI cards
     total_opps = filtered.shape[0]
