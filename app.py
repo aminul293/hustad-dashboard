@@ -1,68 +1,115 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from centerpoint_api import fetch_service_data
+from datetime import datetime
+import requests
 
-st.set_page_config(page_title="📊 Centerpoint Dashboard", layout="wide")
-st.title("📊 Live Centerpoint Sales Dashboard")
+# --- API CONFIG ---
+BASE_URL = "https://api.centerpointconnect.io/centerpoint"
+HEADERS = {
+    "Authorization": st.secrets["centerpoint"]["api_key"],
+    "Accept": "application/json"
+}
 
-with st.spinner("Fetching live data..."):
+@st.cache_data
+def fetch_service_data():
+    url = f"{BASE_URL}/services?include=billedCompany,property,accountManager&sort=-openedAt"
+
+    try:
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        res.raise_for_status()
+    except Exception as e:
+        st.error(f"❌ API error: {e}")
+        return pd.DataFrame()
+
+    data = res.json()
+
+    included_lookup = {}
+    for item in data.get("included", []):
+        _type = item.get("type")
+        _id = item.get("id")
+        name = item.get("attributes", {}).get("name", "Unknown")
+        included_lookup[(_type, _id)] = name
+
+    def resolve(rel, rel_type):
+        if isinstance(rel, dict) and "data" in rel:
+            rel_data = rel["data"]
+            if isinstance(rel_data, dict):
+                _id = rel_data.get("id")
+                return included_lookup.get((rel_type, _id), "Unknown") if _id else "Unknown"
+        return "Unknown"
+
+    records = []
+    for item in data.get("data", []):
+        attr = item.get("attributes", {})
+        rels = item.get("relationships", {})
+
+        records.append({
+            "Ticket ID": attr.get("name"),
+            "Description": attr.get("description"),
+            "Company": resolve(rels.get("billedCompany"), "companies"),
+            "Property": resolve(rels.get("property"), "properties"),
+            "Manager": resolve(rels.get("accountManager"), "employees"),
+            "Status": attr.get("displayStatus", "Unknown"),
+            "Type": attr.get("opportunityType", "Unknown"),
+            "Opened At": attr.get("openedAt"),
+            "Created Date": attr.get("createdAt"),  # If available
+            "Price": attr.get("price", 0)
+        })
+
+    df = pd.DataFrame(records)
+    df["Opened At"] = pd.to_datetime(df["Opened At"], errors="coerce")
+    df["Created Date"] = pd.to_datetime(df["Created Date"], errors="coerce")
+    df["Price"] = pd.to_numeric(df["Price"], errors="coerce").fillna(0)
+
+    return df
+
+# --- Streamlit App Setup ---
+st.set_page_config(page_title="📡 Centerpoint Service Dashboard", layout="wide")
+st.title("📡 Centerpoint Service Dashboard")
+st.markdown("Live service data from the Centerpoint API.")
+
+with st.spinner("Fetching latest service data..."):
     df = fetch_service_data()
 
-if df.empty:
-    st.error("No data received from API.")
-    st.stop()
+if not df.empty:
+    st.sidebar.header("Filter Options")
 
-# Filter
-st.sidebar.header("Filters")
-min_date, max_date = df["created_date"].min(), df["created_date"].max()
-date_range = st.sidebar.date_input("Date Range", [min_date, max_date])
-rep_list = ["All"] + sorted(df["opportunity_manager"].dropna().unique().tolist())
-selected_rep = st.sidebar.selectbox("Filter by Rep", rep_list)
+    if not df['Created Date'].isnull().all():
+        min_date = df['Created Date'].min().date()
+        max_date = df['Created Date'].max().date()
 
-filtered_df = df.copy()
-if len(date_range) == 2:
-    start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-    filtered_df = filtered_df[filtered_df["created_date"].between(start, end)]
+        date_range = st.sidebar.date_input(
+            "Filter by 'Created Date':",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date,
+        )
+    else:
+        date_range = []
 
-if selected_rep != "All":
-    filtered_df = filtered_df[filtered_df["opportunity_manager"] == selected_rep]
+    if len(date_range) == 2:
+        start_ts = pd.to_datetime(date_range[0])
+        end_ts = pd.to_datetime(date_range[1]).replace(hour=23, minute=59, second=59)
+        df["Created Date"] = pd.to_datetime(df["Created Date"], errors="coerce")
 
-# KPIs
-st.subheader("📌 Summary Metrics")
-col1, col2 = st.columns(2)
-col1.metric("Closed Transactions", f"{filtered_df.shape[0]}")
-col2.metric("Total Sales", f"${filtered_df['sale_price'].sum():,.0f}")
+        mask = df["Created Date"].notna() & df["Created Date"].between(start_ts, end_ts)
+        filtered_df = df[mask]
+    else:
+        filtered_df = df.copy()
 
-# Charts
-st.subheader("🧑 Top Performing Reps")
-top_reps = (
-    filtered_df.groupby("opportunity_manager")["sale_price"]
-    .sum()
-    .sort_values(ascending=False)
-    .reset_index()
-)
-fig1 = px.bar(top_reps, x="opportunity_manager", y="sale_price", title="Sales by Rep", text_auto=True)
-st.plotly_chart(fig1, use_container_width=True)
+    st.header("Filtered Service Tickets")
 
-st.subheader("📅 Weekly Sales Trend")
-trend = (
-    filtered_df.set_index("created_date")
-    .resample("W")["sale_price"]
-    .sum()
-    .reset_index()
-)
-fig2 = px.line(trend, x="created_date", y="sale_price", title="Weekly Sales")
-st.plotly_chart(fig2, use_container_width=True)
+    if len(date_range) == 2:
+        st.markdown(f"Displaying data from **{date_range[0].strftime('%Y-%m-%d')}** to **{date_range[1].strftime('%Y-%m-%d')}**.")
 
-# High Value
-st.subheader("🏆 High-Value Transactions")
-high_value = filtered_df[filtered_df["sale_price"] > 100000].sort_values(by="sale_price", ascending=False)
-st.dataframe(high_value)
+    col1, col2 = st.columns(2)
+    col1.metric("Total Tickets Found", f"{filtered_df.shape[0]}")
+    col2.metric("Total Price (USD)", f"${filtered_df['Price'].sum():,.2f}")
 
-# Raw Table
-st.markdown("### 📋 Full Data Table")
-st.dataframe(filtered_df)
-
+    st.dataframe(
+        filtered_df.sort_values(by="Created Date", ascending=False).style.format({"Price": "${:,.2f}"}),
+        use_container_width=True
+    )
+else:
+    st.error("Failed to load data from Centerpoint API. Check the error message above and ensure your secrets are set correctly.")
