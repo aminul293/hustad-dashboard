@@ -53,7 +53,7 @@ def fetch_service_data():
             "Status": attr.get("displayStatus", "Unknown"),
             "Type": attr.get("opportunityType", "Unknown"),
             "Opened At": attr.get("openedAt"),
-            "Created Date": attr.get("createdAt"),  # If available
+            "Created Date": attr.get("createdAt"),
             "Price": attr.get("price", 0)
         })
 
@@ -91,9 +91,16 @@ if not df.empty:
     if len(date_range) == 2:
         start_ts = pd.to_datetime(date_range[0])
         end_ts = pd.to_datetime(date_range[1]).replace(hour=23, minute=59, second=59)
-        df["Created Date"] = pd.to_datetime(df["Created Date"], errors="coerce")
 
-        mask = df["Created Date"].notna() & df["Created Date"].between(start_ts, end_ts)
+        created_for_comparison = df["Created Date"]
+        if pd.api.types.is_datetime64_any_dtype(created_for_comparison) and created_for_comparison.dt.tz is not None:
+            created_for_comparison = created_for_comparison.dt.tz_convert(None)
+
+        mask = (
+            df["Created Date"].notna() &
+            (created_for_comparison >= start_ts) &
+            (created_for_comparison <= end_ts)
+        )
         filtered_df = df[mask]
     else:
         filtered_df = df.copy()
