@@ -79,14 +79,18 @@ if not df.empty:
         min_date = df['Created Date'].min().date()
         max_data_date = df['Created Date'].max().date()
         today = datetime.today().date()
-        max_display_date = max(max_data_date, today + timedelta(days=7))
+        max_display_date = max(today + timedelta(days=7), max_data_date)
 
-        date_range = st.sidebar.date_input(
-            "Filter by 'Created Date':",
-            value=(max_data_date - timedelta(days=7), max_data_date),
-            min_value=min_date,
-            max_value=max_display_date
-        )
+        try:
+            date_range = st.sidebar.date_input(
+                "Filter by 'Created Date':",
+                value=(max_data_date - timedelta(days=7), max_data_date),
+                min_value=min_date,
+                max_value=max_display_date
+            )
+        except st.StreamlitAPIException:
+            st.sidebar.error("⚠️ Please select a date within the valid range.")
+            date_range = []
     else:
         date_range = []
 
