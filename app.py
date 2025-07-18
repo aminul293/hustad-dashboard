@@ -13,56 +13,6 @@ HEADERS = {
 }
 
 @st.cache_data
-def fetch_service_data():
-    url = f"{BASE_URL}/services?include=billedCompany,property,accountManager&sort=-openedAt"
-    try:
-        res = requests.get(url, headers=HEADERS, timeout=10)
-        res.raise_for_status()
-    except Exception as e:
-        st.error(f"❌ API error: {e}")
-        return pd.DataFrame()
-
-    data = res.json()
-    included_lookup = {}
-    for item in data.get("included", []):
-        _type = item.get("type")
-        _id = item.get("id")
-        name = item.get("attributes", {}).get("name", "Unknown")
-        included_lookup[(_type, _id)] = name
-
-    def resolve(rel, rel_type):
-        if isinstance(rel, dict) and "data" in rel:
-            rel_data = rel["data"]
-            if isinstance(rel_data, dict):
-                _id = rel_data.get("id")
-                return included_lookup.get((rel_type, _id), "Unknown") if _id else "Unknown"
-        return "Unknown"
-
-    records = []
-    for item in data.get("data", []):
-        attr = item.get("attributes", {})
-        rels = item.get("relationships", {})
-
-        records.append({
-            "Ticket ID": attr.get("name"),
-            "Description": attr.get("description"),
-            "Company": resolve(rels.get("billedCompany"), "companies"),
-            "Property": resolve(rels.get("property"), "properties"),
-            "Manager": resolve(rels.get("accountManager"), "employees"),
-            "Status": attr.get("displayStatus", "Unknown"),
-            "Type": attr.get("opportunityType", "Unknown"),
-            "Opened At": attr.get("openedAt"),
-            "Created Date": attr.get("createdAt"),
-            "Price": attr.get("price", 0)
-        })
-
-    df = pd.DataFrame(records)
-    df["Opened At"] = pd.to_datetime(df["Opened At"], errors="coerce")
-    df["Created Date"] = pd.to_datetime(df["Created Date"], errors="coerce")
-    df["Price"] = pd.to_numeric(df["Price"], errors="coerce").fillna(0)
-    return df
-
-@st.cache_data
 def fetch_opportunities():
     url = f"{BASE_URL}/opportunities"
     try:
@@ -73,99 +23,87 @@ def fetch_opportunities():
         st.warning(f"Failed to fetch opportunities: {e}")
         return pd.DataFrame()
 
-@st.cache_data
-def fetch_invoices():
-    url = f"{BASE_URL}/invoices"
-    try:
-        res = requests.get(url, headers=HEADERS, timeout=10)
-        res.raise_for_status()
-        return pd.json_normalize(res.json().get("data", []))
-    except Exception as e:
-        st.warning(f"Failed to fetch invoices: {e}")
-        return pd.DataFrame()
-
 # --- Streamlit App Setup ---
-st.set_page_config(page_title="📡 Centerpoint Service Dashboard", layout="wide")
-st.title("📡 Centerpoint Service Dashboard")
-st.markdown("Live service data from the Centerpoint API.")
+st.set_page_config(page_title="📊 Opportunity Management Dashboard", layout="wide")
+st.title("📊 Opportunity Management Dashboard")
+st.markdown("Track service opportunities, performance trends, and pipeline insights from CenterPoint.")
 
-with st.spinner("Fetching latest service data..."):
-    df = fetch_service_data()
-    df_opps = fetch_opportunities()
-    df_invoices = fetch_invoices()
+with st.spinner("Loading opportunity data..."):
+    df = fetch_opportunities()
 
 if not df.empty:
-    st.sidebar.header("Filter Options")
+    st.sidebar.header("🔎 Filter Opportunities")
 
-    if not df['Created Date'].isnull().all():
-        min_date = df['Created Date'].min().date()
-        max_data_date = df['Created Date'].max().date()
-        today = datetime.today().date()
-        max_display_date = max(today + timedelta(days=7), max_data_date)
+    # Basic cleanup & parsing
+    df['Created Date'] = pd.to_datetime(df['attributes.createdAt'], errors='coerce')
+    df['Closed Date'] = pd.to_datetime(df['attributes.closedAt'], errors='coerce')
+    df['Status'] = df['attributes.displayStatus'].fillna("Unknown")
+    df['Value'] = pd.to_numeric(df['attributes.price'], errors='coerce').fillna(0)
+    df['Rep'] = df['relationships.accountManager.data.id'].fillna("Unassigned")
+    df['Client'] = df['relationships.billedCompany.data.id'].fillna("Unknown")
+    df['Opportunity ID'] = df['id']
 
-        try:
-            date_range = st.sidebar.date_input(
-                "Filter by 'Created Date':",
-                value=(
-                    max(min_date, max_data_date - timedelta(days=7)),
-                    max_data_date
-                ),
-                min_value=min_date,
-                max_value=max_display_date
-            )
-        except StreamlitAPIException:
-            st.sidebar.error("⚠️ Please select a date within the valid range.")
-            date_range = []
-    else:
-        date_range = []
+    # Filters
+    reps = df['Rep'].unique()
+    clients = df['Client'].unique()
+    min_date = df['Created Date'].min().date()
+    max_date = df['Created Date'].max().date()
 
+    selected_rep = st.sidebar.selectbox("Account Manager", options=["All"] + list(reps))
+    selected_client = st.sidebar.selectbox("Client", options=["All"] + list(clients))
+    status_filter = st.sidebar.multiselect("Status", options=df['Status'].unique())
+    date_range = st.sidebar.date_input("Created Date Range", value=(min_date, max_date))
+
+    # Filter logic
+    filtered = df.copy()
+    if selected_rep != "All":
+        filtered = filtered[filtered['Rep'] == selected_rep]
+    if selected_client != "All":
+        filtered = filtered[filtered['Client'] == selected_client]
+    if status_filter:
+        filtered = filtered[filtered['Status'].isin(status_filter)]
     if len(date_range) == 2:
-        start_ts = pd.to_datetime(date_range[0])
-        end_ts = pd.to_datetime(date_range[1]).replace(hour=23, minute=59, second=59)
+        start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+        filtered = filtered[(filtered['Created Date'] >= start) & (filtered['Created Date'] <= end)]
 
-        created_for_comparison = df["Created Date"]
-        if pd.api.types.is_datetime64_any_dtype(created_for_comparison) and created_for_comparison.dt.tz is not None:
-            created_for_comparison = created_for_comparison.dt.tz_convert(None)
+    # KPI cards
+    total_opps = filtered.shape[0]
+    closed_opps = filtered[filtered['Status'] == 'Closed'].shape[0]
+    open_opps = filtered[filtered['Status'] != 'Closed'].shape[0]
+    win_rate = (closed_opps / total_opps) * 100 if total_opps > 0 else 0
 
-        mask = (
-            df["Created Date"].notna() &
-            (created_for_comparison >= start_ts) &
-            (created_for_comparison <= end_ts)
-        )
-        filtered_df = df[mask]
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Total Opportunities", total_opps)
+    kpi2.metric("Open Opportunities", open_opps)
+    kpi3.metric("Closed Opportunities", closed_opps)
+    kpi4.metric("Win Rate", f"{win_rate:.2f}%")
 
-        if filtered_df.empty:
-            st.warning("⚠️ No data found for the selected date range.")
-    else:
-        filtered_df = df.copy()
+    # Line chart - Opportunity trends over time
+    trend = filtered.copy()
+    trend['Month'] = trend['Created Date'].dt.to_period("M").astype(str)
+    st.subheader("📈 Opportunity Trend (Monthly)")
+    st.plotly_chart(px.line(trend.groupby(['Month', 'Status']).size().reset_index(name='Count'),
+                            x='Month', y='Count', color='Status'), use_container_width=True)
 
-    st.header("Filtered Service Tickets")
+    # Breakdown charts
+    st.subheader("📊 Opportunity Breakdown")
+    breakdown1, breakdown2, breakdown3 = st.columns(3)
 
-    if len(date_range) == 2:
-        st.markdown(f"Displaying data from **{date_range[0].strftime('%Y-%m-%d')}** to **{date_range[1].strftime('%Y-%m-%d')}**.")
+    with breakdown1:
+        st.plotly_chart(px.bar(filtered['Rep'].value_counts().reset_index(), x='index', y='Rep',
+                               labels={'index': 'Rep', 'Rep': 'Opportunities'}), use_container_width=True)
+    with breakdown2:
+        st.plotly_chart(px.pie(filtered, names='Client', title="By Client"), use_container_width=True)
+    with breakdown3:
+        st.plotly_chart(px.bar(filtered['attributes.opportunityType'].value_counts().reset_index(),
+                               x='index', y='attributes.opportunityType',
+                               labels={'index': 'Type', 'attributes.opportunityType': 'Count'}),
+                        use_container_width=True)
 
-    col1, col2 = st.columns(2)
-    col1.metric("Total Tickets Found", f"{filtered_df.shape[0]}")
-    col2.metric("Total Price (USD)", f"${filtered_df['Price'].sum():,.2f}")
-
-    st.dataframe(
-        filtered_df.sort_values(by="Created Date", ascending=False).style.format({"Price": "${:,.2f}"}),
-        use_container_width=True
-    )
-
-    # --- Additional Sections ---
-    with st.expander("📋 Opportunities Data"):
-        st.dataframe(df_opps.head(100), use_container_width=True)
-
-    with st.expander("🧾 Invoice Data"):
-        try:
-            invoice_display_df = df_invoices.copy()
-            for col in invoice_display_df.columns:
-                if invoice_display_df[col].dtype == "object":
-                    invoice_display_df[col] = invoice_display_df[col].astype(str)
-            st.dataframe(invoice_display_df.head(100), use_container_width=True)
-        except Exception as e:
-            st.error(f"Failed to display invoice data: {e}")
+    # Table
+    st.subheader("📋 Opportunity Table")
+    st.dataframe(filtered[['Opportunity ID', 'Client', 'Rep', 'Status', 'Created Date', 'Value']]
+                 .sort_values(by='Created Date', ascending=False), use_container_width=True)
 
 else:
-    st.error("Failed to load data from Centerpoint API. Check the error message above and ensure your secrets are set correctly.")
+    st.error("No opportunity data available. Please check API credentials or connectivity.")
