@@ -1,118 +1,59 @@
 import streamlit as st
-import pandas as pd
-import plotly.express as px
-from datetime import datetime, timedelta
-import requests
-from streamlit.errors import StreamlitAPIException
+from streamlit_option_menu import option_menu
 
-# --- API CONFIG ---
-BASE_URL = "https://api.centerpointconnect.io/centerpoint"
-HEADERS = {
-    "Authorization": st.secrets["centerpoint"]["api_key"],
-    "Accept": "application/json"
-}
+st.set_page_config(page_title="Hustad AI Workflow Dashboard", layout="wide")
 
-@st.cache_data
-def fetch_opportunities():
-    url = f"{BASE_URL}/opportunities?include=accountManager,billedCompany,property"
-    try:
-        res = requests.get(url, headers=HEADERS, timeout=10)
-        res.raise_for_status()
-        return pd.json_normalize(res.json().get("data", []))
-    except Exception as e:
-        st.warning(f"Failed to fetch opportunities: {e}")
-        return pd.DataFrame()
+with st.sidebar:
+    selected = option_menu(
+        menu_title="Hustad Dashboards",
+        options=[
+            "Overview", "Financial", "ROI & Profitability", "Sales Intelligence",
+            "Labor Efficiency", "Vendors", "Client Accounts", "Trends",
+            "HR & Workforce", "Production", "Project Management"
+        ],
+        icons=["house", "bar-chart-line", "graph-up", "clipboard-data",
+               "people", "truck", "person-lines-fill", "activity",
+               "person-workspace", "gear", "building"],
+        default_index=0,
+    )
 
-# --- Streamlit App Setup ---
-st.set_page_config(page_title="\U0001F4CA Opportunity Management Dashboard", layout="wide")
-st.title("\U0001F4CA Opportunity Management Dashboard")
-st.markdown("Track service opportunities, performance trends, and pipeline insights from CenterPoint.")
+st.title("📊 Hustad AI Workflow & Automation Dashboard")
 
-with st.spinner("Loading opportunity data..."):
-    df = fetch_opportunities()
+if selected == "Overview":
+    st.header("📌 Executive Overview")
+    st.markdown("Welcome to the Hustad Executive Dashboard. Use the sidebar to explore each department.")
+    # KPIs snapshot
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Monthly Revenue", "$1.2M")
+    col2.metric("Open Opportunities", "124")
+    col3.metric("Avg ROI / Client", "18.4%")
 
-if not df.empty:
-    st.sidebar.header("\U0001F50E Filter Opportunities")
+elif selected == "Financial":
+    st.switch_page("pages/1_Financial.py")
 
-    # Basic cleanup & parsing
-    df['Created Date'] = pd.to_datetime(df['attributes.createdAt'], errors='coerce')
-    df['Closed Date'] = pd.to_datetime(df['attributes.closedAt'], errors='coerce')
-    df['Status'] = df['attributes.displayStatus'].fillna("Unknown")
-    df['Value'] = pd.to_numeric(df['attributes.price'], errors='coerce').fillna(0)
-    df['Rep'] = df['attributes.accountManagerName'].fillna("Unassigned") if 'attributes.accountManagerName' in df.columns else "Unassigned"
-    df['Client'] = df['attributes.billedCompanyName'].fillna("Unknown") if 'attributes.billedCompanyName' in df.columns else "Unknown"
-    df['Opportunity ID'] = df['id']
+elif selected == "ROI & Profitability":
+    st.switch_page("pages/2_ROI.py")
 
-    # Filters
-    reps = df['Rep'].unique()
-    clients = df['Client'].unique()
-    min_date = df['Created Date'].dropna().min().date()
-    max_date = df['Created Date'].dropna().max().date()
+elif selected == "Sales Intelligence":
+    st.switch_page("pages/3_Sales.py")
 
-    selected_rep = st.sidebar.selectbox("Account Manager", options=["All"] + list(reps))
-    selected_client = st.sidebar.selectbox("Client", options=["All"] + list(clients))
-    status_filter = st.sidebar.multiselect("Status", options=df['Status'].unique())
-    date_range = st.sidebar.date_input("Created Date Range", value=(min_date, max_date), min_value=min_date, max_value=max_date)
+elif selected == "Labor Efficiency":
+    st.switch_page("pages/4_Labor.py")
 
-    # Filter logic
-    filtered = df.copy()
-    if selected_rep != "All":
-        filtered = filtered[filtered['Rep'] == selected_rep]
-    if selected_client != "All":
-        filtered = filtered[filtered['Client'] == selected_client]
-    if status_filter:
-        filtered = filtered[filtered['Status'].isin(status_filter)]
-    if len(date_range) == 2:
-        try:
-            start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-            filtered = filtered[(filtered['Created Date'] >= start) & (filtered['Created Date'] <= end)]
-        except Exception as e:
-            st.warning("⚠️ Please select a valid date range within available data.")
+elif selected == "Vendors":
+    st.switch_page("pages/5_Vendors.py")
 
-    # KPI cards
-    total_opps = filtered.shape[0]
-    closed_opps = filtered[filtered['Status'].str.lower() == 'closed'].shape[0]
-    open_opps = filtered[filtered['Status'].str.lower() != 'closed'].shape[0]
-    win_rate = (closed_opps / total_opps) * 100 if total_opps > 0 else 0
+elif selected == "Client Accounts":
+    st.switch_page("pages/6_Clients.py")
 
-    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("Total Opportunities", total_opps)
-    kpi2.metric("Open Opportunities", open_opps)
-    kpi3.metric("Closed Opportunities", closed_opps)
-    kpi4.metric("Win Rate", f"{win_rate:.2f}%")
+elif selected == "Trends":
+    st.switch_page("pages/7_Trend_Analysis.py")
 
-    # Line chart - Opportunity trends over time
-    trend = filtered.copy()
-    trend['Month'] = trend['Created Date'].dt.to_period("M").astype(str)
-    st.subheader("\U0001F4C8 Opportunity Trend (Monthly)")
-    st.plotly_chart(px.line(trend.groupby(['Month', 'Status']).size().reset_index(name='Count'),
-                            x='Month', y='Count', color='Status'), use_container_width=True)
+elif selected == "HR & Workforce":
+    st.switch_page("pages/8_HR.py")
 
-    # Breakdown charts
-    st.subheader("\U0001F4CA Opportunity Breakdown")
-    breakdown1, breakdown2, breakdown3 = st.columns(3)
+elif selected == "Production":
+    st.switch_page("pages/9_Production.py")
 
-    with breakdown1:
-        rep_counts = filtered['Rep'].value_counts().reset_index()
-        rep_counts.columns = ['Rep', 'Count']
-        st.plotly_chart(px.bar(rep_counts, x='Rep', y='Count',
-                               labels={'Rep': 'Account Manager', 'Count': 'Opportunities'}),
-                        use_container_width=True)
-
-    with breakdown2:
-        st.plotly_chart(px.pie(filtered, names='Client', title="By Client"), use_container_width=True)
-
-    with breakdown3:
-        type_counts = filtered['attributes.opportunityType'].value_counts().reset_index()
-        type_counts.columns = ['Type', 'Count']
-        st.plotly_chart(px.bar(type_counts, x='Type', y='Count',
-                               labels={'Type': 'Opportunity Type', 'Count': 'Count'}),
-                        use_container_width=True)
-
-    # Table
-    st.subheader("\U0001F4CB Opportunity Table")
-    st.dataframe(filtered[['Opportunity ID', 'Client', 'Rep', 'Status', 'Created Date', 'Value']]
-                 .sort_values(by='Created Date', ascending=False), use_container_width=True)
-
-else:
-    st.error("No opportunity data available. Please check API credentials or connectivity.")
+elif selected == "Project Management":
+    st.switch_page("pages/10_Project_Management.py")
