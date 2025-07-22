@@ -1,6 +1,6 @@
-
 streamlit
-pandas
+streamlit-option-menu
 plotly
-openai
-requests
+pandas
+numpy
+openpyxl
