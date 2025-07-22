@@ -4,18 +4,14 @@ import plotly.express as px
 
 st.title("💵 Financial & Revenue Performance")
 
-# Load sample data
-df = pd.read_csv("data/sales_pipline.csv")
+# Example placeholder dataset
+data = {
+    "Department": ["Sales", "Production", "Service"],
+    "Net_Profit": [120000, 85000, 56000],
+    "Month": ["June", "June", "June"]
+}
+df = pd.DataFrame(data)
 
-# Filters
-year = st.selectbox("Select Year", df['Year'].unique())
-filtered = df[df['Year'] == year]
-
-# Charts
-st.subheader("Department-Level P&L Summary")
-fig = px.bar(filtered, x="Department", y="Net_Profit", color="Department", barmode="group")
+# Bar chart
+fig = px.bar(df, x="Department", y="Net_Profit", color="Department", title="Department Net Profit")
 st.plotly_chart(fig, use_container_width=True)
-
-st.subheader("Cash Flow: Projected vs Actual")
-fig2 = px.line(filtered, x="Month", y=["Cash_Projected", "Cash_Actual"], markers=True)
-st.plotly_chart(fig2, use_container_width=True)
