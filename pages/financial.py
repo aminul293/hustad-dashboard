@@ -5,7 +5,7 @@ import plotly.express as px
 st.title("💵 Financial & Revenue Performance")
 
 # Load sample data
-df = pd.read_csv("data/financials.csv")
+df = pd.read_csv("data/sales_pipline.csv")
 
 # Filters
 year = st.selectbox("Select Year", df['Year'].unique())
