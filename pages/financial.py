@@ -7,7 +7,7 @@ import plotly.express as px
 st.set_page_config(page_title="Financial Dashboard", layout="wide")
 st.title("💵 Financial & Revenue Performance")
 
-# Sample DataFrame
+# Example data
 data = {
     "Department": ["Sales", "Production", "Service", "Inspections"],
     "Net_Profit": [125000, 98000, 67000, 32000],
@@ -17,12 +17,12 @@ data = {
 }
 df = pd.DataFrame(data)
 
-# P&L Summary Bar Chart
+# Net Profit Bar Chart
 st.subheader("📊 Net Profit by Department")
-fig1 = px.bar(df, x="Department", y="Net_Profit", color="Department", title="Department-wise Net Profit")
+fig1 = px.bar(df, x="Department", y="Net_Profit", color="Department", title="Net Profit")
 st.plotly_chart(fig1, use_container_width=True)
 
-# Cash Flow Comparison Line Chart
+# Cash Flow Line Chart
 st.subheader("💸 Cash Flow: Projected vs Actual")
-fig2 = px.line(df, x="Department", y=["Cash_Projected", "Cash_Actual"], markers=True)
+fig2 = px.line(df, x="Department", y=["Cash_Projected", "Cash_Actual"], markers=True, title="Cash Flow Comparison")
 st.plotly_chart(fig2, use_container_width=True)
