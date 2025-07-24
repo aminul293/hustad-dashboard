@@ -1,8 +1,11 @@
+# utils/helpers.py
 
-import pandas as pd
+import requests
 
-def load_data(file_path):
-    return pd.read_csv(file_path)
-
-def format_currency(amount):
-    return "${:,.2f}".format(amount)
+def fetch_ai_summary_from_n8n(webhook_url):
+    try:
+        response = requests.get(webhook_url)
+        response.raise_for_status()
+        return response.text
+    except Exception as e:
+        return f"❌ Failed to fetch from n8n: {e}"
